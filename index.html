@@ -1,0 +1,1173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Map of Calernia — Interactive</title>
+<style>
+  :root {
+    --gold: #f0c060;
+    --gold-soft: rgba(240, 192, 96, 0.15);
+    --gold-line: rgba(240, 192, 96, 0.75);
+    --city: #ffd76a;
+    --city-stroke: #4a2f00;
+    --panel-bg: #1e1a14;
+    --panel-border: #4a3d28;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    font-family: "Georgia", "Iowan Old Style", serif;
+    background: #0e1216;
+    color: #e8e0d0;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  h1 {
+    font-weight: 400;
+    letter-spacing: 6px;
+    margin: 24px 0 4px;
+    font-size: 22px;
+    color: #c9b98a;
+    text-transform: uppercase;
+  }
+  .subtitle {
+    font-size: 13px;
+    color: #7a7264;
+    letter-spacing: 2px;
+    margin-bottom: 20px;
+    font-style: italic;
+  }
+
+  #map-wrap {
+    position: relative;
+    width: min(900px, 95vw);
+    margin: 0 auto 60px;
+  }
+
+  #overlay {
+    width: 100%;
+    height: auto;
+    display: block;
+    border-radius: 6px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.7);
+    touch-action: none;
+  }
+
+  .region {
+    fill: rgba(0, 0, 0, 0);
+    stroke: rgba(0, 0, 0, 0);
+    stroke-width: 2.5;
+    stroke-linejoin: round;
+    cursor: pointer;
+    transition: fill .2s ease, stroke .2s ease;
+    vector-effect: non-scaling-stroke;
+  }
+
+  .region:hover {
+    fill: var(--gold-soft);
+    stroke: var(--gold-line);
+  }
+
+  #map-wrap.has-selection .region:not(.selected) {
+    fill: rgba(10, 8, 4, 0.38);
+  }
+
+  .region.selected {
+    fill: var(--gold-soft);
+    stroke: var(--gold);
+    stroke-width: 3;
+  }
+
+  .city {
+    fill: var(--city);
+    stroke: var(--city-stroke);
+    stroke-width: 2;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .3s ease, r .15s ease;
+    cursor: pointer;
+    vector-effect: non-scaling-stroke;
+  }
+
+  #map-wrap.has-selection .city.visible {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .city:hover {
+    r: 11;
+    fill: #fff6d0;
+  }
+
+  .city.visible-selected {
+    r: 12;
+    fill: #fff6d0;
+    stroke-width: 3;
+  }
+
+  .city-label {
+    font-family: "Georgia", serif;
+    font-size: 13px;
+    fill: #f5ecd2;
+    paint-order: stroke;
+    stroke: #1a1408;
+    stroke-width: 3;
+    stroke-linejoin: round;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .3s ease;
+    text-anchor: middle;
+  }
+  #map-wrap.has-selection .city-label.visible {
+    opacity: 1;
+  }
+
+  #panel {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) scale(.9);
+    width: min(420px, 90vw);
+    max-height: 85vh;
+    overflow-y: auto;
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    border-radius: 14px;
+    padding: 28px 26px 24px;
+    box-shadow: 0 25px 80px rgba(0,0,0,0.85), 0 0 0 1px rgba(240,192,96,0.08);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .25s ease, transform .25s ease;
+    z-index: 10;
+  }
+  #panel.open {
+    opacity: 1;
+    pointer-events: auto;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  #panel-handle {
+  position: absolute;
+  top: 8px;
+  left: 10px;
+  padding: 6px 8px;
+  cursor: grab;
+  color: #8a7d5e;
+  font-size: 14px;
+  letter-spacing: -2px;
+  user-select: none;
+  line-height: 1;
+  touch-action: none;
+}
+#panel-handle:active { cursor: grabbing; }
+
+  #portrait {
+    width: 130px;
+    height: 130px;
+    object-fit: cover;
+    border-radius: 50%;
+    display: block;
+    margin: 0 auto 18px;
+    border: 3px solid var(--gold);
+    background: #2a241c;
+    box-shadow: 0 0 40px rgba(240,192,96,0.15);
+  }
+
+  #info-name {
+    margin: 0 0 4px;
+    text-align: center;
+    font-weight: 500;
+    font-size: 24px;
+    letter-spacing: 1px;
+    color: #f0d998;
+  }
+
+  #info-type {
+    text-align: center;
+    font-size: 11px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: #8a7d5e;
+    margin-bottom: 18px;
+  }
+
+  #info-desc {
+    line-height: 1.55;
+    color: #cbc2a8;
+    font-size: 15px;
+    margin: 0;
+  }
+
+  #close {
+    position: absolute;
+    top: 10px;
+    right: 14px;
+    background: none;
+    border: none;
+    color: #8a7d5e;
+    font-size: 24px;
+    line-height: 1;
+    cursor: pointer;
+    padding: 4px;
+    font-family: sans-serif;
+  }
+  #close:hover { color: #f0d998; }
+
+  #hint {
+    position: fixed;
+    bottom: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 12px;
+    color: #6a6353;
+    letter-spacing: 1px;
+    pointer-events: none;
+    transition: opacity .3s;
+  }
+  body.has-selection #hint { opacity: 0; }
+</style>
+</head>
+<body>
+
+<h1>Calernia</h1>
+<div class="subtitle">A map of the continent — click a region</div>
+
+<div id="map-wrap">
+  <svg id="overlay" viewBox="0 0 1080 1280" preserveAspectRatio="xMidYMid meet">
+    <image href="calernia.jpg" x="0" y="0" width="1080" height="1284" />
+
+    <g id="regions" transform="translate(1.7775822,-12.121483)">
+      <path
+         style="fill:transparent;stroke:none"
+         d="m 451.73452,149.83549 c -2.91162,-6.7092 -0.24287,95.84785 0.557,103.04671 81.04179,10.95613 105.94548,51.45863 132.0112,91.34953 l 112.51587,-46.23177 c 31.12346,-56.91425 33.46766,-122.05114 33.97757,-187.71212 -108.82942,28.41736 -190.3144,3.14557 -279.06164,39.54765 z"
+         id="region-the-everdark" class="region" />
+      <path
+         style="fill:transparent;stroke:none"
+         d="m 173.78689,95.805594 260.12333,41.218686 7.24112,119.75699 -38.43364,-1.11402 c -31.42866,9.51963 -32.55604,-11.26202 -38.43364,-27.29345 -4.99664,14.95121 -5.44772,34.15251 -45.11775,38.99065 l -9.46916,34.53457 -36.76261,-10.02616 -42.88971,-57.37195 c 73.18461,-46.35251 3.17515,-53.88221 -43.44673,-37.87664 z"
+         id="region-the-chain-of-hunger" class="region" />
+      <path
+         style="fill:transparent;stroke:none"
+         d="m 186.0411,201.63736 41.21868,27.29345 30.0785,62.38504 56.81495,21.72336 c -2.54315,22.92332 -12.89769,47.97702 -0.55701,66.84111 l 50.13083,7.24112 -1.11402,20.60934 -68.51214,12.81122 c -12.06542,36.71183 -11.11229,72.83192 9.46916,108.0598 -8.10485,-28.6347 -24.86081,-48.90613 35.6486,-62.94205 l 3.89906,-43.44673 25.62243,-8.91214 c 41.99766,38.49272 75.43682,28.21915 95.24858,-7.24112 43.96878,-3.08927 92.67245,-10.69819 105.27475,16.15327 l -0.55701,295.77192 -26.17943,54.58691 -66.28411,78.5383 19.49533,60.157 -67.39812,25.06542 -29.52149,-94.69158 5.01308,59.04299 -59.59999,-3.89907 c -57.2433,26.17349 -19.18734,-50.28562 -43.44672,-108.0598 L 220.57567,805.4354 186.0411,778.69896 c 37.36151,-101.16052 63.02596,-192.62293 -34.53458,-384.3364 -23.51831,-66.03814 0.73889,-129.62624 34.53458,-192.7252 z"
+         id="region-procer" class="region" />
+      <path
+         style="fill:transparent;stroke:none"
+         d="m 312.4822,909.59614 90.79251,-9.46916 32.86355,200.52332 -96.91962,34.5346 c 0,0 -97.11542,13.6958 -97.47662,9.4691 -7.9101,-92.5628 17.1443,-175.98781 70.74018,-235.05786 z"
+         id="region-titanomachy" class="region"
+          />
+      <path
+         style="fill:transparent;stroke:none"
+         d="m 178.79997,782.59802 40.66168,25.06542 74.63924,-15.03925 14.48224,115.30092 -32.30653,34.53457 -88.00747,36.76261 -27.29345,2.22804 -26.73645,60.71397 50.13084,110.8449 30.63551,21.1663 c 0,0 -41.21869,34.5346 -42.33271,37.3197 -1.11402,2.785 -28.40747,14.4822 -28.40747,14.4822 l -35.09158,-21.1664 -33.977569,-93.5775 28.407469,-41.2187 23.9514,-24.5084 10.02617,-57.37196 -18.93832,-60.157 c 14.62348,-47.1131 33.15995,-101.34071 32.30654,-120.314 z"
+         id="region-dominion-of-levant" class="region"
+          />
+      <path
+         style="fill:transparent;stroke:none"
+         d="m 457.30461,1067.7868 72.4112,27.2934 36.20561,42.8897 -0.55701,45.6748 -65.17009,9.4692 -10.58317,-18.9384 -35.09159,-6.1271 4.45608,-40.6616 -8.35514,-24.5084 z"
+         id="region-ashur" class="region"
+          />
+      <path
+         style="fill:transparent;stroke:none"
+         d="m 427.78312,943.5737 77.42429,-29.52149 54.5869,36.2056 97.47663,6.1271 66.84111,-1.11401 36.2056,-49.57383 32.30654,-22.28037 12.81121,-42.3327 11.6972,43.44672 11.14018,9.46916 43.44673,40.10466 50.13083,96.91966 -9.46916,36.2056 -31.74953,18.3813 -53.47289,-24.5084 c -13.88006,5.3504 -0.24621,-27.3953 3.34206,-46.2318 l -38.99065,-36.76262 c -9.51912,5.47754 -16.88375,38.96362 -25.06542,61.82802 -22.11617,19.8655 -20.34773,41.0578 -16.15327,62.385 -21.72336,23.8526 -43.44672,21.5687 -65.17008,16.1533 -52.25216,-35.5247 -104.0756,-58.6163 -154.84858,-51.2448 -36.96897,-51.3276 -67.19174,-75.67044 -90.79251,-73.52526 z"
+         id="region-league-of-free-cities" class="region"
+          />
+      <path
+         style="fill:transparent;stroke:none"
+         d="m 848.88213,893.99988 c 0,0 -28.40748,-22.28037 -29.5215,-22.28037 -1.11401,0 -35.09158,-126.99812 -35.09158,-126.99812 l -8.91215,-23.9514 -1.11402,-21.72336 5.5701,-23.39439 11.14018,-4.45607 11.14019,-21.16635 -5.5701,37.31962 23.9514,-94.13457 c 16.22845,-94.48647 -7.95662,-81.99599 -41.7757,-44.00373 l -8.35513,-15.03925 c -2.51004,-70.10866 20.16143,-9.39631 22.83738,-125.32709 66.81268,25.43727 105.86606,58.3482 134.23923,94.13457 0,0 1.11402,23.39439 3.34206,24.50841 2.22803,1.11402 36.2056,40.66167 36.2056,40.66167 2.0606,33.75512 -13.38925,85.85451 16.71028,90.23551 -18.95272,20.01487 -41.57564,30.48723 -67.95513,31.19251 24.02156,0.92998 53.29571,-4.96841 63.49905,13.92524 l -21.72336,60.71401 c -11.51964,-13.98813 -38.6198,56.89542 -49.57382,62.38503 -22.88474,11.4687 -86.02208,48.79185 -59.04298,67.39813 z"
+         id="region-praes" class="region"
+          />
+      <path
+         style="fill:transparent;stroke:none"
+         d="m 507.43544,398.81864 c 0,-2.22804 2.22804,-41.7757 2.22804,-41.7757 l 56.81495,-40.10467 -48.45981,-7.79813 c 4.2287,-16.15327 -32.52758,-32.30653 -50.68784,-48.4598 l -57.92897,27.85046 c -41.97916,-28.01434 -41.93245,-12.17559 -51.80186,-6.68411 l 17.8243,26.73644 c -24.44565,-9.70295 -50.58236,-22.11159 -60.71401,-8.91214 4.44724,15.04278 -6.05098,36.06375 13.36822,45.11775 l 30.0785,3.34205 9.46916,11.14019 -1.11402,42.88971 12.81121,11.14019 32.30654,-2.78505 7.24112,-18.93831 z"
+         id="region-kingdom-of-the-dead" class="region"
+          />
+      <path
+         style="fill:transparent;stroke:none"
+         d="m 595.44291,481.81302 47.34579,23.39439 42.88971,-12.25421 43.44672,13.92523 41.7757,-12.81121 20.05233,-42.3327 0.55701,-83.55139 33.97757,-58.48598 -124.21307,-11.14018 -94.13457,41.21868 -15.03925,13.36823 -13.92523,65.17008 z"
+         id="region-the-golden-bloom" class="region"
+          />
+      <path
+         style="fill:transparent;stroke:none"
+         d="m 724.11205,815.46157 c 0,0 -56.81495,1.11402 -54.0299,-2.22804 2.78505,-3.34205 -7.24112,-20.05233 -7.24112,-20.05233 0,0 -41.21869,-38.43364 -39.54766,-40.66168 1.67103,-2.22804 -12.81121,19.49533 -12.81121,19.49533 l -27.85047,-5.01309 -18.93831,-21.16635 c 0,0 10.02617,-16.15327 11.14019,-18.93831 1.11401,-2.78505 2.78504,-244.52707 2.78504,-244.52707 l 60.157,25.06541 48.45981,-10.58317 45.67476,14.48224 2.22804,12.2542 33.97756,13.92523 10.58318,16.15327 39.54765,-28.40747 c 6.62346,27.73535 6.06975,76.29285 -24.5084,129.78316 l -25.62243,35.09158 7.24112,62.38504 c -10.69192,29.28729 -25.75774,52.88851 -51.24485,62.94205 z"
+         id="region-callow" class="region"
+          />
+      <ellipse
+         style="fill:transparent;stroke:none"
+         id="region-refuge" class="region"
+         cx="657.27094"
+         cy="854.17371"
+         rx="16.153269"
+         ry="13.089718"
+          />
+      <ellipse
+         style="fill:transparent;stroke:none"
+         id="region-mercantis" class="region"
+         cx="733.02417"
+         cy="847.76813"
+         rx="25.622427"
+         ry="23.39439"
+          />
+    </g>
+
+    <g id="cities" transform="translate(1.7775822,-12.121483)">
+      <ellipse
+         style="fill:transparent;stroke:none"
+         id="city-caith" class="city"
+         data-region="region-callow"
+         cx="612.06628"
+         cy="525.21899"
+         rx="6.3018403"
+         ry="6.104908"
+          />
+      <ellipse
+         style="fill:transparent;stroke:none"
+         id="city-daoine" class="city"
+         data-region="region-callow"
+         cx="698.51965"
+         cy="582.72333"
+         rx="13.194479"
+         ry="7.6803679"
+          />
+      <ellipse
+         style="fill:transparent;stroke:none"
+         id="city-liag" class="city"
+         data-region="region-callow"
+         cx="756.61475"
+         cy="545.10919"
+         rx="6.3018403"
+         ry="4.3325152"
+          />
+      <ellipse
+         style="fill:transparent;stroke:none"
+         id="city-denier" class="city"
+         data-region="region-callow"
+         cx="715.25891"
+         cy="604.38586"
+         rx="5.9079757"
+         ry="5.7110429"
+          />
+      <ellipse
+         style="fill:transparent;stroke:none"
+         id="city-harrow" class="city"
+         data-region="region-callow"
+         cx="579.76935"
+         cy="532.70245"
+         rx="5.9079757"
+         ry="5.3171778"
+          />
+      <ellipse
+         style="fill:transparent;stroke:none"
+         id="city-hedges" class="city"
+         data-region="region-callow"
+         cx="603.20428"
+         cy="594.53925"
+         rx="6.8926382"
+         ry="5.7110429"
+          />
+      <ellipse
+         style="fill:transparent;stroke:none"
+         id="city-ankou" class="city"
+         data-region="region-callow"
+         cx="573.86133"
+         cy="624.07916"
+         rx="6.3018403"
+         ry="5.7110429"
+          />
+      <ellipse
+         style="fill:transparent;stroke:none"
+         id="city-southpool" class="city"
+         data-region="region-callow"
+         cx="625.06378"
+         cy="644.56012"
+         rx="5.1202455"
+         ry="4.9233127"
+          />
+      <circle
+         style="fill:transparent;stroke:none"
+         id="city-vale" class="city"
+         data-region="region-callow"
+         cx="628.01782"
+         cy="715.45581"
+         r="4.529448"
+          />
+      <ellipse
+         style="fill:transparent;stroke:none"
+         id="city-holden" class="city"
+         data-region="region-callow"
+         cx="572.08893"
+         cy="749.52515"
+         rx="5.7110429"
+         ry="4.7263803"
+          />
+      <ellipse
+         style="fill:transparent;stroke:none"
+         id="city-laure" class="city"
+         data-region="region-callow"
+         cx="684.53741"
+         cy="619.54968"
+         rx="16.148001"
+         ry="7.8773007"
+          />
+      <ellipse
+         style="fill:transparent;stroke:none"
+         id="city-summerholm" class="city"
+         data-region="region-callow"
+         cx="729.24109"
+         cy="639.04602"
+         rx="15.558"
+         ry="6.104908"
+          />
+      <ellipse
+         style="fill:transparent;stroke:none"
+         id="city-marchford" class="city"
+         data-region="region-callow"
+         cx="723.13617"
+         cy="691.43005"
+         rx="15.755"
+         ry="4.9233127"
+          />
+      <ellipse
+         style="fill:transparent;stroke:none"
+         id="city-liesse" class="city"
+         data-region="region-callow"
+         cx="643.37854"
+         cy="773.15704"
+         rx="12.012883"
+         ry="7.4834356"
+          />
+      <ellipse
+         style="fill:transparent;stroke:none"
+         id="city-dormer" class="city"
+         data-region="region-callow"
+         cx="717.42517"
+         cy="805.65094"
+         rx="7.6803679"
+         ry="4.9233127"
+          />
+      <ellipse
+         style="fill:transparent;stroke:none"
+         id="city-the-blessed-isle" class="city"
+         data-region="region-praes"
+         cx="781.03436"
+         cy="687.88525"
+         rx="8.2711658"
+         ry="13.588344"
+          />
+      <ellipse
+         style="fill:transparent;stroke:none"
+         id="city-hospes" class="city"
+         data-region="region-praes"
+         cx="789.8963"
+         cy="739.67853"
+         rx="6.4990001"
+         ry="6.6957054"
+          />
+      <ellipse
+         style="fill:transparent;stroke:none"
+         id="city-wolof" class="city"
+         data-region="region-praes"
+         cx="838.9325"
+         cy="551.80493"
+         rx="12.603681"
+         ry="6.6957054"
+          />
+      <ellipse
+         style="fill:transparent;stroke:none"
+         id="city-okoro" class="city"
+         data-region="region-praes"
+         cx="949.80554"
+         cy="561.06073"
+         rx="10.043558"
+         ry="6.104908"
+          />
+      <ellipse
+         style="fill:transparent;stroke:none"
+         id="city-aksum" class="city"
+         data-region="region-praes"
+         cx="837.55402"
+         cy="611.47546"
+         rx="12.800613"
+         ry="4.529448"
+          />
+      <ellipse
+         style="fill:transparent;stroke:none"
+         id="city-ater" class="city"
+         data-region="region-praes"
+         cx="915.14539"
+         cy="631.1687"
+         rx="23.828835"
+         ry="22.253374"
+          />
+      <ellipse
+         style="fill:transparent;stroke:none"
+         id="city-nok" class="city"
+         data-region="region-praes"
+         cx="957.6828"
+         cy="664.25336"
+         rx="8.4680986"
+         ry="6.4987731"
+          />
+      <ellipse
+         style="fill:transparent;stroke:none"
+         id="city-thalassina" class="city"
+         data-region="region-praes"
+         cx="902.73865"
+         cy="690.05151"
+         rx="12.209816"
+         ry="7.4834356"
+          />
+      <ellipse
+         style="fill:transparent;stroke:none"
+         id="city-kahtan" class="city"
+         data-region="region-praes"
+         cx="907.66199"
+         cy="740.07239"
+         rx="12.012883"
+         ry="7.4834356"
+          />
+      <ellipse
+         style="fill:transparent;stroke:none"
+         id="city-foramen" class="city"
+         data-region="region-praes"
+         cx="832.63068"
+         cy="813.72516"
+         rx="9.4527607"
+         ry="6.6957054"
+          />
+      <ellipse
+         style="fill:transparent;stroke:none"
+         id="city-satus" class="city"
+         data-region="region-praes"
+         cx="817.46686"
+         cy="689.06689"
+         rx="7.2865028"
+         ry="4.9233127"
+          />
+      <ellipse
+         style="fill:transparent;stroke:none"
+         id="city-keter" class="city"
+         data-region="region-kingdom-of-the-dead"
+         cx="452.15704"
+         cy="349.55521"
+         rx="26.782822"
+         ry="21.465645"
+          />
+      <ellipse
+         style="fill:transparent;stroke:none"
+         id="city-rhenia" class="city"
+         data-region="region-procer"
+         cx="190.82761"
+         cy="260.73865"
+         rx="17.133129"
+         ry="9.0588961"
+          />
+      <ellipse
+         style="fill:transparent;stroke:none"
+         id="city-hannoven" class="city"
+         data-region="region-procer"
+         cx="301.70062"
+         cy="315.87976"
+         rx="13.785276"
+         ry="5.9079757"
+          />
+      <ellipse
+         style="fill:transparent;stroke:none"
+         id="city-bremen" class="city"
+         data-region="region-procer"
+         cx="269.00983"
+         cy="437.78098"
+         rx="14.573006"
+         ry="6.8926382"
+          />
+      <ellipse
+         style="fill:transparent;stroke:none"
+         id="city-cleves" class="city"
+         data-region="region-procer"
+         cx="368.65768"
+         cy="425.37424"
+         rx="14.179141"
+         ry="5.1202455"
+          />
+      <ellipse
+         style="fill:transparent;stroke:none"
+         id="city-neustria" class="city"
+         data-region="region-procer"
+         cx="244.19632"
+         cy="512.61536"
+         rx="15.360736"
+         ry="6.104908"
+          />
+      <ellipse
+         style="fill:transparent;stroke:none"
+         id="city-lyonis" class="city"
+         data-region="region-procer"
+         cx="311.15338"
+         cy="534.27789"
+         rx="11.422086"
+         ry="5.3171778"
+          />
+      <ellipse
+         style="fill:transparent;stroke:none"
+         id="city-brus" class="city"
+         data-region="region-procer"
+         cx="282.99203"
+         cy="553.38037"
+         rx="13.194479"
+         ry="7.8773007"
+          />
+      <ellipse
+         style="fill:transparent;stroke:none"
+         id="city-brabant" class="city"
+         data-region="region-procer"
+         cx="431.47916"
+         cy="528.56689"
+         rx="15.163804"
+         ry="7.8773007"
+          />
+      <ellipse
+         style="fill:transparent;stroke:none"
+         id="city-segovia" class="city"
+         data-region="region-procer"
+         cx="216.82269"
+         cy="670.75214"
+         rx="15.557669"
+         ry="6.6957054"
+          />
+      <ellipse
+         style="fill:transparent;stroke:none"
+         id="city-lange" class="city"
+         data-region="region-procer"
+         cx="292.24786"
+         cy="649.2865"
+         rx="13.785276"
+         ry="7.2865028"
+          />
+      <ellipse
+         style="fill:transparent;stroke:none"
+         id="city-salia" class="city"
+         data-region="region-procer"
+         cx="378.5043"
+         cy="619.94354"
+         rx="23.238037"
+         ry="24.025766"
+          />
+      <ellipse
+         style="fill:transparent;stroke:none"
+         id="city-creusens" class="city"
+         data-region="region-procer"
+         cx="293.03558"
+         cy="709.94171"
+         rx="13.391411"
+         ry="9.2558279"
+          />
+      <ellipse
+         style="fill:transparent;stroke:none"
+         id="city-orense" class="city"
+         data-region="region-procer"
+         cx="245.77177"
+         cy="778.67114"
+         rx="14.573006"
+         ry="9.4527607"
+          />
+      <ellipse
+         style="fill:transparent;stroke:none"
+         id="city-aequitan" class="city"
+         data-region="region-procer"
+         cx="320.60614"
+         cy="808.60492"
+         rx="12.603681"
+         ry="7.8773007"
+          />
+      <ellipse
+         style="fill:transparent;stroke:none"
+         id="city-valencis" class="city"
+         data-region="region-procer"
+         cx="383.82147"
+         cy="852.52087"
+         rx="12.406749"
+         ry="5.7110429"
+          />
+      <ellipse
+         style="fill:transparent;stroke:none"
+         id="city-vaccei" class="city"
+         data-region="region-dominion-of-levant"
+         cx="188.66135"
+         cy="802.10614"
+         rx="14.573006"
+         ry="7.6803679"
+          />
+      <ellipse
+         style="fill:transparent;stroke:none"
+         id="city-tartessos" class="city"
+         data-region="region-dominion-of-levant"
+         cx="162.66626"
+         cy="868.47241"
+         rx="12.603681"
+         ry="6.6957054"
+          />
+      <ellipse
+         style="fill:transparent;stroke:none"
+         id="city-malaga" class="city"
+         data-region="region-dominion-of-levant"
+         cx="136.67117"
+         cy="1004.5527"
+         rx="11.815951"
+         ry="6.8926382"
+          />
+      <ellipse
+         style="fill:transparent;stroke:none"
+         id="city-alava" class="city"
+         data-region="region-dominion-of-levant"
+         cx="128.79387"
+         cy="1114.835"
+         rx="12.603681"
+         ry="7.6803679"
+          />
+      <ellipse
+         style="fill:transparent;stroke:none"
+         id="city-levant" class="city"
+         data-region="region-dominion-of-levant"
+         cx="154.78896"
+         cy="1209.9534"
+         rx="12.603681"
+         ry="9.0588961"
+          />
+      <ellipse
+         style="fill:transparent;stroke:none"
+         id="city-hainaut" class="city"
+         data-region="region-procer"
+         cx="470.07791"
+         cy="461.21594"
+         rx="13.982208"
+         ry="10.634356"
+          />
+      <ellipse
+         style="fill:transparent;stroke:none"
+         id="city-arans" class="city"
+         data-region="region-procer"
+         cx="531.12701"
+         cy="552.59265"
+         rx="11.619019"
+         ry="7.4834356"
+          />
+      <ellipse
+         style="fill:transparent;stroke:none"
+         id="city-aisne" class="city"
+         data-region="region-procer"
+         cx="448.21841"
+         cy="606.15826"
+         rx="13.391411"
+         ry="8.6650305"
+          />
+      <ellipse
+         style="fill:transparent;stroke:none"
+         id="city-cantal" class="city"
+         data-region="region-procer"
+         cx="408.83191"
+         cy="680.99261"
+         rx="14.179141"
+         ry="9.0588961"
+          />
+      <ellipse
+         style="fill:transparent;stroke:none"
+         id="city-baeyux" class="city"
+         data-region="region-procer"
+         cx="513.99384"
+         cy="653.22516"
+         rx="9.4527607"
+         ry="7.6803679"
+          />
+      <ellipse
+         style="fill:transparent;stroke:none"
+         id="city-orne" class="city"
+         data-region="region-procer"
+         cx="546.88159"
+         cy="704.23065"
+         rx="5.7110429"
+         ry="5.9079757"
+          />
+      <ellipse
+         style="fill:transparent;stroke:none"
+         id="city-salamans" class="city"
+         data-region="region-procer"
+         cx="447.62759"
+         cy="824.1626"
+         rx="15.163804"
+         ry="9.2558279"
+          />
+      <ellipse
+         style="fill:transparent;stroke:none"
+         id="city-tenerife" class="city"
+         data-region="region-procer"
+         cx="437.58405"
+         cy="929.71838"
+         rx="13.391411"
+         ry="6.4987731"
+          />
+      <ellipse
+         style="fill:transparent;stroke:none"
+         id="city-iserre" class="city"
+         data-region="region-procer"
+         cx="457.47424"
+         cy="747.75275"
+         rx="12.800613"
+         ry="6.8926382"
+          />
+      <ellipse
+         style="fill:transparent;stroke:none"
+         id="city-arwad" class="city"
+         data-region="region-ashur"
+         cx="466.53314"
+         cy="1078.2056"
+         rx="13.982208"
+         ry="9.2558279"
+          />
+      <ellipse
+         style="fill:transparent;stroke:none"
+         id="city-smyrna" class="city"
+         data-region="region-ashur"
+         cx="505.52576"
+         cy="1188.0939"
+         rx="13.194"
+         ry="8.4680986"
+          />
+      <ellipse
+         style="fill:transparent;stroke:none"
+         id="city-helike" class="city"
+         data-region="region-league-of-free-cities"
+         cx="527.58221"
+         cy="971.66504"
+         rx="13.588344"
+         ry="8.2711658"
+          />
+      <ellipse
+         style="fill:transparent;stroke:none"
+         id="city-nicae" class="city"
+         data-region="region-league-of-free-cities"
+         cx="532.89941"
+         cy="1057.3307"
+         rx="13.785276"
+         ry="8.0742331"
+          />
+      <ellipse
+         style="fill:transparent;stroke:none"
+         id="city-atalante" class="city"
+         data-region="region-league-of-free-cities"
+         cx="672.52454"
+         cy="972.84662"
+         rx="12.800613"
+         ry="7.8773007"
+          />
+      <ellipse
+         style="fill:transparent;stroke:none"
+         id="city-stygia" class="city"
+         data-region="region-league-of-free-cities"
+         cx="687.49139"
+         cy="1073.676"
+         rx="14.77"
+         ry="9.4527607"
+          />
+      <ellipse
+         style="fill:transparent;stroke:none"
+         id="city-bellerophon" class="city"
+         data-region="region-league-of-free-cities"
+         cx="877.33435"
+         cy="1048.4688"
+         rx="13.194479"
+         ry="7.8773007"
+          />
+      <ellipse
+         style="fill:transparent;stroke:none"
+         id="city-delos" class="city"
+         data-region="region-league-of-free-cities"
+         cx="794.42578"
+         cy="971.46808"
+         rx="14.179141"
+         ry="8.8619633"
+          />
+      <ellipse
+         style="fill:transparent;stroke:none"
+         id="city-penthes" class="city"
+         data-region="region-league-of-free-cities"
+         cx="828.10126"
+         cy="902.14783"
+         rx="12.800613"
+         ry="8.8619633"
+          />
+    </g>
+  </svg>
+</div>
+
+
+<div id="hint">Click a region to see it · Click a city for details · Esc to reset</div>
+
+<div id="panel">
+  <div id="panel-handle">⋮⋮</div>
+  <button id="close" aria-label="Close">✕</button>
+  <img id="portrait" src="" alt="">
+  <h2 id="info-name"></h2>
+  <div id="info-type"></div>
+  <p id="info-desc"></p>
+</div>
+
+<script>
+const REGIONS = {
+  "region-ashur": {
+    name: "Ashur",
+    portrait: "portraits/ashur.jpg",
+    desc: "The Thalassocracy of Ashur, a maritime power built on trade, fleets, and an old Baalite hierarchy. It is a wealthy merchant nation that projects its influence across the seas, though its rigid social tiers shape every aspect of life within."
+  },
+  "region-callow": {
+    name: "Callow",
+    portrait: "portraits/callow.jpg",
+    desc: "The Kingdom of Callow, a proud realm of green fields and old chivalric memory, currently under the occupation of the Dread Empire of Praes. Its people remember their lost crown and the days when a king ruled from a Callowan throne."
+  },
+  "region-dominion-of-levant": {
+    name: "Dominion of Levant",
+    portrait: "portraits/levant.jpg",
+    desc: "The Dominion of Levant, a desert nation of harsh customs and warrior traditions. Its people are bound by the concept of Blood, a complex system of honor and lineage that defines their place in the world."
+  },
+  "region-kingdom-of-the-dead": {
+    name: "Kingdom of the Dead",
+    portrait: "portraits/dead.jpg",
+    desc: "The domain of the Dead King, a kingdom where the dead do not rest and the living are either absent or enslaved. It is a realm of eternal stillness, a horror that has outlasted every living empire and forced ancient enemies into uneasy alliances."
+  },
+  "region-league-of-free-cities": {
+    name: "League of Free Cities",
+    portrait: "portraits/league.jpg",
+    desc: "A fractious collection of independent city-states, each with its own customs and often at odds with the others. From the egalitarian fanatics of Bellerophon to the scheming Magisters of Stygia, the League is a place of opportunity, intrigue, and frequent bloodshed."
+  },
+  "region-mercantis": {
+    name: "Mercantis",
+    portrait: "portraits/mercantis.jpg",
+    desc: "The City of Bought and Sold, an independent polity where everything has a price. Founded by exiles, it is the great neutral ground of Calernia, an intermediary for trade between Praes and the rest of the continent, and a place where any coin spends the same."
+  },
+  "region-praes": {
+    name: "Praes",
+    portrait: "portraits/praes.jpg",
+    desc: "The Dread Empire of Praes, ruled from the Tower in Ater by a Dread Empress. It is the continent's great villain-state, a land of ambition, scheming, and cruel sophistication, where magic and undeath are unremarkable facts of life."
+  },
+  "region-procer": {
+    name: "Procer",
+    portrait: "portraits/procer.jpg",
+    desc: "The Principate of Procer, a sprawling, faction-riven realm of feuding princes and glittering courts. It is the great bastion of the Gods Above on Calernia, unified only in the face of common enemies and perpetually divided by its own ambitions."
+  },
+  "region-refuge": {
+    name: "Refuge",
+    portrait: "portraits/refuge.jpeg",
+    desc: "Not a city so much as a cluster of vagabonds held together by awe of the Lady of the Lake. Located in the dangerous Waning Woods, it is a place with no laws save her whims, where heroes and villains alike have learned at her feet."
+  },
+  "region-the-chain-of-hunger": {
+    name: "The Chain of Hunger",
+    portrait: "portraits/chain.jpg",
+    desc: "The desolate northern reaches dominated by the ratlings, a threat that has plagued its neighbors for generations. A land of grim survival, where the strong prey on the weak and the settled realms watch the horizon for warbands."
+  },
+  "region-the-everdark": {
+    name: "The Everdark",
+    portrait: "portraits/everdark.jpg",
+    desc: "The underground empire of the drow, a people who survive by consuming the very essence of one another. A realm of perpetual night and ruthless ambition, where power is the only law that matters."
+  },
+  "region-the-golden-bloom": {
+    name: "The Golden Bloom",
+    portrait: "portraits/bloom.jpg",
+    desc: "The mysterious realm of the elves, a place that does not seem to obey the normal laws of reality. It is an ancient and alien power, largely indifferent to the affairs of humans and other mortal peoples."
+  },
+  "region-titanomachy": {
+    name: "Titanomachy",
+    portrait: "portraits/giant.jpg",
+    desc: "The ancient homeland of the Gigantes, a realm of giants and old powers that predates the rise of modern Calernia. It stands apart from the squabbles of humans, a reminder of a far older age."
+  }
+};
+
+const CITIES = {
+  "city-aequitan": { name: "Aequitan", desc: "A Proceran city in the south, within the Arlesite principalities." },
+  "city-aisne": { name: "Aisne", desc: "An Alamans principality of Procer, south of Brabant and east of Salia." },
+  "city-aksum": { name: "Aksum", desc: "A Praesi city ruled by a High Lady, one of the Wasteland's many power centers." },
+  "city-alava": { name: "Alava", desc: "A major city of the Dominion of Levant, ruled by a lord of one of the Blood lines." },
+  "city-ankou": { name: "Ankou", desc: "A Callowan settlement, one of the many towns and cities under Praesi occupation." },
+  "city-arans": { name: "Arans", desc: "A Proceran city, part of the patchwork of principalities that make up the Principate." },
+  "city-arwad": { name: "Arwad", desc: "A southern Ashuran port, a gateway to the Thalassocracy's trade routes." },
+  "city-atalante": { name: "Atalante", desc: "A Good Free City, feverish in its devotion to the Gods Above. It is perhaps the truest theocracy Calernia has ever seen." },
+  "city-ater": { name: "Ater", desc: "The City of Gates, capital of the Dread Empire of Praes. It is home to the Tower, where whoever dares to climb its heights becomes the new Dread Emperor or Empress." },
+  "city-baeyux": { name: "Baeyux", desc: "A Proceran city, one of the many in the Principate's fractured heartland." },
+  "city-bellerophon": { name: "Bellerophon", desc: "An Evil Free City of Freedom, valuing above all the equality of the People. Its motto is a warning to all who would compromise it." },
+  "city-brabant": { name: "Brabant", desc: "A Proceran principality, one of the Alamans territories." },
+  "city-bremen": { name: "Bremen", desc: "A Proceran city, part of the fractious collection of principalities." },
+  "city-brus": { name: "Brus", desc: "An Alamans principality of Procer, bordering the Lycaonese principalities." },
+  "city-caith": { name: "Caith", desc: "A Callowan city, its people living under the shadow of the Tower's occupation." },
+  "city-cantal": { name: "Cantal", desc: "A Proceran city, one of the many in the divided Principate." },
+  "city-cleves": { name: "Cleves", desc: "A heavily fortified Alamans principality on the edge of the Tomb, bordering the Kingdom of the Dead. Its people are stern and rough, a necessary trait for those who guard the front against the Dead King." },
+  "city-creusens": { name: "Creusens", desc: "A Proceran city, part of the patchwork of the Principate." },
+  "city-daoine": { name: "Daoine", desc: "The duchy of the Deoraithe, a people who remember a time before human kingdoms. It is a land of old bargains and deeper secrets, perched between Callow, the Golden Bloom, and the Waning Woods." },
+  "city-delos": { name: "Delos", desc: "A wealthy Good Free City ruled by a Secretariat, where the tiering of citizens is strictly observed." },
+  "city-denier": { name: "Denier", desc: "A city of the Golden Bloom's borders, a place where the mortal and the fae touch." },
+  "city-dormer": { name: "Dormer", desc: "A Callowan city, one that has seen more than its share of the wars that have swept through the kingdom." },
+  "city-foramen": { name: "Foramen", desc: "A Praesi city, one of the many under the Tower's rule." },
+  "city-hainaut": { name: "Hainaut", desc: "A Proceran city, part of the Principate's fractured whole." },
+  "city-hannoven": { name: "Hannoven", desc: "A Lycaonese principality of Procer, bordering the Kingdom of the Dead. Its people have never forgotten the Enemy." },
+  "city-harrow": { name: "Harrow", desc: "A Callowan city, its name a reminder of the grim history of the realm." },
+  "city-hedges": { name: "Hedges", desc: "A Callowan city, one of the many in the occupied kingdom." },
+  "city-helike": { name: "Helike", desc: "An Evil Free City that changes allegiances with its ruler. Currently aligned with Praes and the Kingdom of the Dead, it is a place of shifting loyalties and dangerous ambition." },
+  "city-holden": { name: "Holden", desc: "A Callowan city, its lumber and resources feeding the kingdom's economy." },
+  "city-hospes": { name: "Hospes", desc: "A city in the shadow of the Blessed Isle, a place of pilgrimage and quiet faith." },
+  "city-iserre": { name: "Iserre", desc: "A Proceran city, one of the many that form the Principate's bones." },
+  "city-kahtan": { name: "Kahtan", desc: "A Praesi city, part of the Wasteland's grim landscape." },
+  "city-keter": { name: "Keter", desc: "The capital of the Kingdom of the Dead, a city of purple and silver where the Dead King holds his eternal court. It is a place of stillness and dread, the heart of a horror older than any living nation." },
+  "city-lange": { name: "Lange", desc: "An Alamans principality bordering Salia, dependent on it for trade." },
+  "city-laure": { name: "Laure", desc: "A Callowan city, one of the many that suffered under the occupation." },
+  "city-levant": { name: "Levant", desc: "The capital of the Dominion of Levant, ruled by the Holy Seljun. Founded by the first Pilgrim, it is a place of faith and blood." },
+  "city-liag": { name: "Liag", desc: "A city of the Golden Bloom's reach, a place where the elven realm's presence is felt." },
+  "city-liesse": { name: "Liesse", desc: "A Callowan city, one that has known great tragedy and transformation. Its name carries weight in the stories of the realm." },
+  "city-lyonis": { name: "Lyonis", desc: "An Alamans principality of Procer, on the edge of Lake Pavin." },
+  "city-malaga": { name: "Malaga", desc: "A major city of the Dominion of Levant, ruled by a lord of one of the Blood lines." },
+  "city-marchford": { name: "Marchford", desc: "A Callowan city, a place that has seen the front lines of the wars that have ravaged the kingdom." },
+  "city-neustria": { name: "Neustria", desc: "A Proceran city, one of the many principalities of the fractured realm." },
+  "city-nicae": { name: "Nicae", desc: "A Good Free City ruled by a Basileus, rivaling the Thalassocracy for the greatest fleet." },
+  "city-nok": { name: "Nok", desc: "A Praesi city, one of the Wasteland's grim settlements." },
+  "city-okoro": { name: "Okoro", desc: "A Praesi city, claimed by some to be the most ancient in the Wasteland." },
+  "city-orense": { name: "Orense", desc: "A Proceran city, part of the Principate's many territories." },
+  "city-orne": { name: "Orne", desc: "A Proceran city, one of the many in the divided realm." },
+  "city-penthes": { name: "Penthes", desc: "A Good Free City, incredibly rich thanks to its location on the Wasaliti River. Ruled by two Exarchs, it is a place of wealth and frustration." },
+  "city-rhenia": { name: "Rhenia", desc: "A fortified principality on the edge of the Chain of Hunger, watching for ratling warbands." },
+  "city-salamans": { name: "Salamans", desc: "A Proceran city, one of the many principalities of the realm." },
+  "city-salia": { name: "Salia", desc: "The capital of Procer and seat of the First Prince. Plentiful and unburdened by the wars to the east and north, it stands as a crown jewel of the Principate." },
+  "city-satus": { name: "Satus", desc: "A Praesi city, part of the Wasteland's landscape. It is the birthplace of Dread Empress Malicia." },
+  "city-segovia": { name: "Segovia", desc: "A Proceran city, one of the many in the Principate's patchwork." },
+  "city-smyrna": { name: "Smyrna", desc: "The capital of the Thalassocracy of Ashur. Once a seat of Baalite Hegemony, it clings to the old citizenship tiers and the memory of its ancient power." },
+  "city-southpool": { name: "Southpool", desc: "A Callowan city, one of the many that make up the occupied kingdom." },
+  "city-stygia": { name: "Stygia", desc: "An Evil Free City ruled by a Magisterium of mages and mind-controlled slaves. It boasts the greatest army of all the free cities, for the Spears of Stygia never retreat." },
+  "city-summerholm": { name: "Summerholm", desc: "A Callowan city, its name a relic of a gentler season." },
+  "city-tartessos": { name: "Tartessos", desc: "A major city of the Dominion of Levant, ruled by a lady of one of the Blood lines." },
+  "city-tenerife": { name: "Tenerife", desc: "A Proceran city, the southernmost principality of the Arlesite territories." },
+  "city-thalassina": { name: "Thalassina", desc: "Formerly the biggest sea port in Praes, destroyed in the Tenth Crusade. Some scholars believe it to be the first Praesi city." },
+  "city-the-blessed-isle": { name: "The Blessed Isle", desc: "A holy site, a place of pilgrimage and divine presence. It is a reminder that the Gods Above have not abandoned Calernia." },
+  "city-vaccei": { name: "Vaccei", desc: "A major city of the Dominion of Levant, ruled by a lady of one of the Blood lines." },
+  "city-vale": { name: "Vale", desc: "A Callowan city, one of the many in the occupied kingdom." },
+  "city-valencis": { name: "Valencis", desc: "A Proceran city, part of the Principate's many territories." },
+  "city-wolof": { name: "Wolof", desc: "A High Ladyship of Praes, a city eternally plagued by demons and the schemes of its ruling family." }
+};
+
+
+const mapWrap   = document.getElementById('map-wrap');
+const overlay   = document.getElementById('overlay');
+const panel     = document.getElementById('panel');
+const portrait  = document.getElementById('portrait');
+const nameEl    = document.getElementById('info-name');
+const typeEl    = document.getElementById('info-type');
+const descEl    = document.getElementById('info-desc');
+const closeBtn  = document.getElementById('close');
+
+let selectedRegion = null;
+let selectedCity   = null;
+
+function openPanel(info, type) {
+  if (type === 'Region' && info.portrait) {
+    portrait.style.display = 'block';
+    portrait.src = info.portrait;
+    portrait.alt = info.name;
+  } else {
+    portrait.style.display = 'none';
+  }
+  nameEl.textContent = info.name;
+  typeEl.textContent = type;
+  descEl.textContent = info.desc;
+  panel.classList.add('open');
+  if (panelMoved) {
+    panel.style.transform = 'none';
+  } else {
+    panel.style.transform = '';
+    panel.style.left = '';
+    panel.style.top = '';
+  }
+}
+
+function closePanel() {
+  panel.classList.remove('open');
+}
+
+function clearAll() {
+  if (selectedRegion) selectedRegion.classList.remove('selected');
+  if (selectedCity)   selectedCity.classList.remove('visible-selected');
+  overlay.querySelectorAll('.city').forEach(c => c.classList.remove('visible'));
+
+  selectedRegion = null;
+  selectedCity   = null;
+
+  mapWrap.classList.remove('has-selection', 'city-open');
+  document.body.classList.remove('has-selection');
+  closePanel();
+}
+
+function selectRegion(regionEl) {
+  clearAll();
+  selectedRegion = regionEl;
+  regionEl.classList.add('selected');
+  mapWrap.classList.add('has-selection');
+  document.body.classList.add('has-selection');
+
+  overlay.querySelectorAll(`.city[data-region="${regionEl.id}"]`)
+         .forEach(c => c.classList.add('visible'));
+
+  const info = REGIONS[regionEl.id];
+  if (info) openPanel(info, 'Region');
+}
+
+function selectCity(cityEl) {
+  if (selectedCity) selectedCity.classList.remove('visible-selected');
+  selectedCity = cityEl;
+  cityEl.classList.add('visible-selected');
+  mapWrap.classList.add('city-open');
+  const info = CITIES[cityEl.id];
+  if (info) openPanel(info, 'City');
+}
+
+overlay.addEventListener('click', (e) => {
+  const city   = e.target.closest('.city');
+  const region = e.target.closest('.region');
+  if (city && city.classList.contains('visible')) {
+    selectCity(city);
+    return;
+  }
+  if (region) {
+    selectRegion(region);
+    return;
+  }
+});
+
+closeBtn.addEventListener('click', clearAll);
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') clearAll();
+});
+const handle = document.getElementById('panel-handle');
+let dragState = null;
+let panelMoved = false;
+
+handle.addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  const rect = panel.getBoundingClientRect();
+  // switch from centered transform to explicit left/top
+  panel.style.transform = 'none';
+  panel.style.left = rect.left + 'px';
+  panel.style.top  = rect.top  + 'px';
+  dragState = { dx: e.clientX - rect.left, dy: e.clientY - rect.top };
+  handle.setPointerCapture(e.pointerId);
+});
+
+handle.addEventListener('pointermove', (e) => {
+  if (!dragState) return;
+  panel.style.left = (e.clientX - dragState.dx) + 'px';
+  panel.style.top  = (e.clientY - dragState.dy) + 'px';
+});
+
+handle.addEventListener('pointerup', (e) => {
+  if (!dragState) return;
+  dragState = null;
+  panelMoved = true;
+  handle.releasePointerCapture(e.pointerId);
+});
+</script>
+</body>
+</html>
